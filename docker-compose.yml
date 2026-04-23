@@ -1,0 +1,36 @@
+services: # 여러 개의 독립적인 컨테이너(서비스)를 띄울 것임을 선언합니다.
+
+  # [첫 번째 서비스] 파이썬(FastAPI) 백엔드 서버
+  api_server:
+    build: ./service
+    container_name: vision_api
+    network_mode: host # 서버 본체 네트워크를 직접 사용합니다.
+    volumes:
+      - ./service:/app
+    environment:
+      - DB_HOST=127.0.0.1
+      - DB_PORT=4546
+      - DB_NAME=newron_news
+      - DB_USER=newron
+      - DB_PASSWORD=teamnova0416
+    command: uvicorn server:app --host 0.0.0.0 --port 7000 # 7000번 포트로 직접 실행합니다.
+    depends_on:
+      - ollama_engine
+
+  # [두 번째 서비스] AI 모델 구동 엔진 (Ollama)
+  ollama_engine:
+    image: ollama/ollama:latest
+    container_name: vision_ollama
+    network_mode: host # 마찬가지로 호스트 모드를 사용합니다.
+    volumes:
+      - ollama_data:/root/.ollama
+    deploy: # 배포와 관련된 리소스(하드웨어) 할당을 설정합니다.
+      resources: # 컨테이너가 쓸 수 있는 리소스 제한/예약 설정입니다.
+        reservations: # 반드시 보장받아야 하는 자원을 명시합니다.
+          devices: # 물리적인 장치를 컨테이너에 연결합니다.
+            - driver: nvidia # NVIDIA 그래픽 카드 드라이버를 사용하겠다고 지정합니다.
+              count: 1 # 그래픽 카드 1개를 통째로 할당해 달라는 뜻입니다.
+              capabilities: [gpu] # 이 장치를 단순 계산이 아닌 GPU 목적으로 사용하겠다고 선언합니다.
+
+volumes: # 위에서 사용한 이름 있는 볼륨(Named Volumes)들을 도커 엔진에 등록하는 구역입니다.
+  ollama_data: # 다운받은 AI 모델(llava 등)을 컴퓨터 어딘가에 안전하게 영구 보존합니다.

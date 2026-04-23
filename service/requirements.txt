@@ -1,0 +1,15 @@
+# 백엔드 웹 프레임워크인 FastAPI 본체입니다.
+fastapi
+
+# FastAPI를 실제로 구동시켜 주는 고성능 웹 서버 엔진입니다.
+uvicorn
+
+# 안드로이드 앱에서 사진(파일)을 보낼 때, 그 파일을 정상적으로 수신하기 위해 반드시 필요한 패키지입니다.
+python-multipart
+
+# FastAPI 서버가 Ollama AI 서버에게 "이 이미지 분석해 줘"라고 API 요청(통신)을 보낼 때 사용할 패키지입니다.
+requests
+
+# (추가 예정) PostgreSQL 데이터베이스와 연결하기 위한 패키지 (지금은 비전 통신부터 테스트하기 위해 나중에 추가하겠습니다.)
+psycopg2-binary
+sqlalchemy
