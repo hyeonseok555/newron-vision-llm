@@ -1,0 +1,36 @@
+# Python (Byte-compiled / optimized / DLL files)
+__pycache__/
+*.py[cod]
+*$py.class
+
+# 가상 환경 (Virtual Environments)
+venv/
+.venv/
+env/
+bin/
+lib/
+
+# 보안 및 환경 설정 (Environment Variables)
+.env
+.env.*
+
+# OS 관련
+.DS_Store
+Thumbs.db
+
+# IDE (VS Code, PyCharm 등)
+.vscode/
+.idea/
+
+# 로그 및 임시 파일
+*.log
+tmp/
+
+# 데이터 및 모델 (용량이 크거나 영구 저장되는 데이터)
+ollama_data/
+*.jpg
+*.png
+*.jpeg
+
+# Docker
+.docker/

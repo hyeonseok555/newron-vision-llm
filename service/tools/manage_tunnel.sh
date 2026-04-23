@@ -13,10 +13,11 @@ if ! lsof -i :$LOCAL_PORT > /dev/null; then
     # 2. 끊어진 좀비 프로세스가 있을 수 있으니 깔끔하게 정리
     pkill -f "L $LOCAL_PORT:127.0.0.1:$LOCAL_PORT"
     
-    # 3. 터널 연결 실행 (Keep-Alive 옵션 추가)
-    ssh -p $REMOTE_PORT -N -f -L $LOCAL_PORT:127.0.0.1:$LOCAL_PORT $REMOTE_USER@$REMOTE_HOST \
+    # 3. 터널 연결 실행 (sshpass를 이용한 비밀번호 자동 입력)
+    sshpass -p 'teamnova0416' ssh -p $REMOTE_PORT -N -f -L $LOCAL_PORT:127.0.0.1:$LOCAL_PORT $REMOTE_USER@$REMOTE_HOST \
         -o ServerAliveInterval=60 \
-        -o ServerAliveCountMax=3
+        -o ServerAliveCountMax=3 \
+        -o StrictHostKeyChecking=no
     
     if [ $? -eq 0 ]; then
         echo "✅ 터널 연결 성공!"

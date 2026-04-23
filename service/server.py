@@ -37,55 +37,83 @@ class News(Base):
 
 # Ollama 서버 주소 (Host 모드이므로 127.0.0.1 사용)
 OLLAMA_URL = "http://127.0.0.1:11434/api/generate"
+MODEL_NAME = os.getenv("MODEL_NAME", "moondream")
+
+from fastapi.responses import StreamingResponse
+import json
+import asyncio
 
 @app.get("/")
 def health_check():
-    return {"status": "ok", "message": "Vision LLM 서버가 가동 중입니다!"}
+    return {"status": "ok", "message": f"Vision LLM 서버({MODEL_NAME})가 가동 중입니다!"}
 
 @app.post("/api/vision/analyze")
 async def analyze_image(image_file: UploadFile = File(...)):
-    print("이미지를 받았습니다.")
-    # 1. 안드로이드에서 보낸 사진을 읽어서 Base64로 변환합니다.
-    image_bytes = await image_file.read()
-    encoded_image = base64.b64encode(image_bytes).decode('utf-8')    
-    # 2. Ollama(moondream)에게 사진 분석을 요청합니다.
-    # 팁: 뉴스 검색이 잘 되도록 단어 1개만 명사로 뽑아달라고 요청합니다.
-    payload = {
-        "model": "moondream", 
-        "prompt": "이 사진에서 가장 잘 보이는 사물이나 주제를 한국어 단어 1개로만 말해줘. (예: 자동차, 인공지능, 커피, 날씨)",
-        "images": [encoded_image], 
-        "stream": False 
-    }
-    
-    try:
-        ollama_res = requests.post(OLLAMA_URL, json=payload)
-        # AI가 뽑아낸 단어 (예: "자동차")
-        keyword = ollama_res.json().get("response", "").strip()
-        
-        # 3. [핵심] 뽑아낸 키워드로 뉴스 DB에서 관련 기사 검색!
-        db = SessionLocal()
+    async def generate_progress():
         try:
-            # 제목(title)이나 본문(content_raw)에 해당 키워드가 포함된 뉴스를 최신순으로 3개 가져옵니다.
-            # (ILIKE를 써서 대소문자 구분 없이 검색합니다)
-            search_query = f"%{keyword}%"
-            related_news = db.query(News).filter(
-                (News.title.ilike(search_query)) | (News.content_raw.ilike(search_query))
-            ).order_by(News.id.desc()).limit(3).all()
+            # [단계 1] 이미지 수신
+            yield json.dumps({"step": 1, "message": f"📸 [단계 1] 이미지를 성공적으로 수신했습니다. (사용 모델: {MODEL_NAME})"}) + "\n"
+            await asyncio.sleep(0.1) # 화면에 보이게 살짝 딜레이
             
-            return {
-                "success": True,
-                "detected_object": keyword,
-                "recommended_news": [
-                    {
-                        "id": n.id,
-                        "title": n.title,
-                        "link": n.url,
-                        "preview": n.content_raw[:100] + "..." # 본문은 앞부분만 살짝!
-                    } for n in related_news
-                ]
+            image_bytes = await image_file.read()
+            encoded_image = base64.b64encode(image_bytes).decode('utf-8')    
+            
+            # [단계 2] AI 분석 요청
+            yield json.dumps({"step": 2, "message": "🧠 [단계 2] AI 비전 모델이 이미지 속 사물을 추론하고 있습니다..."}) + "\n"
+            
+            payload = {
+                "model": MODEL_NAME, 
+                "system": "너는 이미지에서 가장 핵심적인 사물의 이름 딱 1개(한국어 명사)만 대답하는 봇이야. 인사말, 부가적인 설명, 마크다운 기호(*, ` 등)는 절대 쓰지 마.",
+                "prompt": "이 사진에서 가장 잘 보이는 사물을 한국어 명사 1개로 대답해.",
+                "images": [encoded_image], 
+                "stream": False 
             }
-        finally:
-            db.close() # DB 연결 종료
             
-    except Exception as e:
-        return {"success": False, "error": str(e)}
+            # Ollama API 동기 호출 (이 동안 대기)
+            ollama_res = requests.post(OLLAMA_URL, json=payload, timeout=300)
+            raw_response = ollama_res.json().get("response", "").strip()
+            
+            # [핵심 필터링] 마크다운 특수문자 제거 및 마지막 단어만 핀셋 추출
+            import re
+            clean_text = re.sub(r'[*`_,\.]', '', raw_response)
+            words = clean_text.split()
+            keyword = words[-1].strip() if words else "알수없음"
+            
+            # [단계 3] AI 분석 완료
+            yield json.dumps({"step": 3, "message": f"🎯 [단계 3] AI 분석 완료! 추출된 핵심 단어: [{keyword}] (원문: {raw_response[:20]}...)"}) + "\n"
+            await asyncio.sleep(0.5)
+
+            # [단계 4] DB 연결 및 검색
+            yield json.dumps({"step": 4, "message": f"🔍 [단계 4] DB 서버(127.0.0.1:4546)에 연결하여 '{keyword}' 관련 뉴스를 검색합니다..."}) + "\n"
+            
+            db = SessionLocal()
+            try:
+                search_query = f"%{keyword}%"
+                related_news = db.query(News).filter(
+                    (News.title.ilike(search_query)) | (News.content_raw.ilike(search_query))
+                ).order_by(News.id.desc()).limit(3).all()
+                
+                # [단계 5] 최종 데이터 수신 완료
+                yield json.dumps({"step": 5, "message": "📥 [단계 5] DB 데이터 수신 완료! 최종 결과를 반환합니다."}) + "\n"
+                
+                final_result = {
+                    "success": True,
+                    "detected_object": keyword,
+                    "recommended_news": [
+                        {
+                            "id": n.id,
+                            "title": n.title,
+                            "link": n.url,
+                            "preview": n.content_raw[:100] + "..."
+                        } for n in related_news
+                    ]
+                }
+                yield json.dumps({"step": 100, "result": final_result}) + "\n"
+                
+            finally:
+                db.close()
+                
+        except Exception as e:
+            yield json.dumps({"step": -1, "error": str(e), "message": f"❌ [오류 발생] {str(e)}"}) + "\n"
+
+    return StreamingResponse(generate_progress(), media_type="application/x-ndjson")
