@@ -123,84 +123,102 @@ def test_vision_model():
     print(f"👉 선택됨: {selected_version['name']}\n")
 
     while True:
-        image_path = input("\n분석할 이미지 파일 경로를 입력하세요 (종료: exit)\n예: /hdd4/newron-vision-llm/test_image.jpg\n입력: ").strip()
-        if image_path.lower() in ['exit', 'quit']:
+        target_path = input("\n분석할 이미지 파일 또는 폴더 경로를 입력하세요 (종료: exit)\n예: /hdd4/newron-vision-llm/testimg\n입력: ").strip()
+        if target_path.lower() in ['exit', 'quit']:
             break
             
-        if not os.path.exists(image_path):
-            print("❌ 오류: 해당 경로에 이미지가 없습니다. 경로를 다시 확인해주세요.")
+        if not os.path.exists(target_path):
+            print("❌ 오류: 해당 경로가 존재하지 않습니다. 경로를 다시 확인해주세요.")
             continue
 
-        print(f"\n📡 {API_URL} 로 이미지 전송 중...")
-        
-        start_time = time.time()
-        stop_event = threading.Event()
-        loader = threading.Thread(target=loading_animation, args=(stop_event, start_time))
-        loader.start()
+        # 파일인지 폴더인지 구분하여 처리할 이미지 목록 생성
+        if os.path.isdir(target_path):
+            image_files = sorted([os.path.join(target_path, f) for f in os.listdir(target_path) if f.lower().endswith(('.png', '.jpg', '.jpeg', '.bmp', '.webp'))])
+            if not image_files:
+                print("❌ 오류: 폴더 내에 이미지 파일(.jpg, .png 등)이 없습니다.")
+                continue
+            print(f"\n📂 폴더 내 총 {len(image_files)}개의 이미지 파일을 순차적으로 분석합니다.")
+        else:
+            image_files = [target_path]
 
-        try:
-            with open(image_path, 'rb') as f:
-                files = {'image_file': f}
-                # 스트리밍 모드로 비전 API 전송
-                response = requests.post(API_URL, files=files, stream=True, timeout=300)
+        total_files = len(image_files)
+        
+        # 파일 개수만큼 반복문 실행
+        for idx, image_path in enumerate(image_files, 1):
+            print(f"\n[{idx}/{total_files}] 📡 {API_URL} 로 이미지 전송 중... ({os.path.basename(image_path)})")
             
-            print("\n" + "=" * 50)
-            print("🚀 [서버 작업 실시간 중계]")
-            print("=" * 50)
-            
-            if response.status_code == 200:
-                final_result = None
+            start_time = time.time()
+            stop_event = threading.Event()
+            loader = threading.Thread(target=loading_animation, args=(stop_event, start_time))
+            loader.start()
+
+            try:
+                with open(image_path, 'rb') as f:
+                    files = {'image_file': f}
+                    # 스트리밍 모드로 비전 API 전송
+                    response = requests.post(API_URL, files=files, stream=True, timeout=300)
                 
-                # 서버가 보내주는 텍스트(JSON)를 한 줄씩 실시간으로 받아서 출력
-                for line in response.iter_lines():
-                    if line:
-                        data = json.loads(line.decode('utf-8'))
-                        step = data.get("step")
-                        
-                        if step == 100:
-                            # 100번은 최종 결과 데이터
-                            final_result = data.get("result")
-                        elif step == -1:
-                            # -1번은 에러 발생
-                            print(data.get("message"))
-                            break
-                        else:
-                            # 1~5단계 진행 상황 출력
-                            print(data.get("message"))
+                print("\n" + "=" * 50)
+                print(f"🚀 [{idx}/{total_files}] 서버 작업 실시간 중계")
+                print("=" * 50)
+                
+                if response.status_code == 200:
+                    final_result = None
+                    
+                    # 서버가 보내주는 텍스트(JSON)를 한 줄씩 실시간으로 받아서 출력
+                    for line in response.iter_lines():
+                        if line:
+                            data = json.loads(line.decode('utf-8'))
+                            step = data.get("step")
                             
-                stop_event.set()
-                loader.join()
-                elapsed = time.time() - start_time
-                _, gpu_final = get_gpu_info()
-                
-                print("\n" + "-" * 60)
-                if final_result and final_result.get("success"):
-                    keyword = final_result.get("detected_object", "결과 없음")
-                    news_list = final_result.get("recommended_news", [])
+                            if step == 100:
+                                # 100번은 최종 결과 데이터
+                                final_result = data.get("result")
+                            elif step == -1:
+                                # -1번은 에러 발생
+                                print(data.get("message"))
+                                break
+                            else:
+                                # 1~5단계 진행 상황 출력
+                                print(data.get("message"))
+                                
+                    stop_event.set()
+                    loader.join()
+                    elapsed = time.time() - start_time
+                    _, gpu_final = get_gpu_info()
                     
-                    print(f"✅ 분석 최종 성공! (소요 시간: {elapsed:.2f}초)")
-                    print(f"🎯 AI가 추출한 키워드: [{keyword}]")
-                    print(f"📰 추천된 뉴스 기사 ({len(news_list)}건):")
-                    for idx, news in enumerate(news_list):
-                        print(f"   {idx+1}. {news.get('title')}")
-                    
-                    # 리포트에 저장
-                    save_to_report(selected_version['name'], image_path, keyword, len(news_list), elapsed, gpu_final)
-                    print(f"\n📝 테스트 결과가 요약표(reports/vision_test_report.md)에 저장되었습니다.")
+                    print("\n" + "-" * 60)
+                    if final_result and final_result.get("success"):
+                        keyword = final_result.get("detected_object", "결과 없음")
+                        news_list = final_result.get("recommended_news", [])
+                        
+                        print(f"✅ 분석 최종 성공! (소요 시간: {elapsed:.2f}초)")
+                        print(f"🎯 AI가 추출한 키워드: [{keyword}]")
+                        print(f"📰 추천된 뉴스 기사 ({len(news_list)}건):")
+                        for news_idx, news in enumerate(news_list):
+                            print(f"   {news_idx+1}. {news.get('title')}")
+                        
+                        # 리포트에 저장
+                        save_to_report(selected_version['name'], image_path, keyword, len(news_list), elapsed, gpu_final)
+                        print(f"\n📝 테스트 결과가 요약표(reports/vision_test_report.md)에 저장되었습니다.")
+                    else:
+                        err_msg = final_result.get('error') if final_result else (data.get('error') if data else '알 수 없는 에러')
+                        print(f"❌ 분석 실패: {err_msg}")
                 else:
-                    err_msg = final_result.get('error') if final_result else data.get('error', '알 수 없는 에러')
-                    print(f"❌ 분석 실패: {err_msg}")
-            else:
+                    stop_event.set()
+                    loader.join()
+                    print(f"❌ 서버 응답 오류 ({response.status_code}): {response.text}")
+                    
+                print("-" * 60)
+                
+            except Exception as e:
                 stop_event.set()
                 loader.join()
-                print(f"❌ 서버 응답 오류 ({response.status_code}): {response.text}")
-                
-            print("-" * 60)
+                print(f"\n❌ 클라이언트 통신 오류: {e}")
             
-        except Exception as e:
-            stop_event.set()
-            loader.join()
-            print(f"\n❌ 클라이언트 통신 오류: {e}")
+            # 다음 파일로 넘어가기 전에 잠시 대기 (서버 과부하 방지)
+            if idx < total_files:
+                time.sleep(1)
 
 if __name__ == "__main__":
     test_vision_model()

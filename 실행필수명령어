@@ -1,1 +1,17 @@
+# SSH 터널링으로 DB 접속
 bash service/tools/manage_tunnel.sh start
+
+# GPU 모니터링
+sudo python3 service/tools/monitor.py
+
+# Ollama 모델 강제 언로드 (메모리 비우기)
+sudo docker stop rag-ollama
+sudo docker start rag-ollama
+
+# Docker Compose로 Ollama 컨테이너를 재시작합니다.
+sudo docker compose restart ollama_engine
+
+# 전체 재 시작
+sudo docker compose restart
+
+
