@@ -34,3 +34,6 @@ ollama_data/
 
 # Docker
 .docker/
+
+# Study
+study/

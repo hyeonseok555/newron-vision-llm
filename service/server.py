@@ -58,13 +58,13 @@ async def analyze_image(image_file: UploadFile = File(...)):
             image_bytes = await image_file.read()
             encoded_image = base64.b64encode(image_bytes).decode('utf-8')    
             
-            # [단계 2] AI 분석 요청
-            yield json.dumps({"step": 2, "message": "🧠 [단계 2] AI 비전 모델이 이미지 속 사물을 추론하고 있습니다..."}) + "\n"
+            # [단계 2] AI 분석 요청 (CoVT 기법 적용)
+            yield json.dumps({"step": 2, "message": "🧠 [단계 2] AI 비전 모델이 이미지의 구조와 상황을 단계별로 분석하고 있습니다..."}) + "\n"
             
             payload = {
                 "model": MODEL_NAME, 
-                "system": "너는 이미지에서 가장 핵심적인 사물의 이름 딱 3개(한국어 명사)만 대답하는 봇이야. 인사말, 부가적인 설명, 마크다운 기호(*, ` 등)는 절대 쓰지 마.",
-                "prompt": "이 사진에서 가장 잘 보이는 사물을 한국어 명사 3개로 대답해.",
+                "system": "너는 이미지 분석 전문가야. 분석 결과를 텍스트로 자세히 풀어서 설명한 뒤, 마지막에 핵심 키워드 3개를 추출해야 해.",
+                "prompt": "사진을 다음 단계에 따라 분석해줘:\n1. 사진 전체의 배경과 주요 객체들을 모두 나열해봐.\n2. 그 객체들 중에서 현재 가장 핵심적인 행동이나 상황이 무엇인지 설명해줘.\n3. 마지막 줄에만 '최종 키워드: 단어1, 단어2, 단어3' 형식으로 한국어 명사 3개를 적어줘.",
                 "images": [encoded_image], 
                 "stream": False 
             }
@@ -72,14 +72,24 @@ async def analyze_image(image_file: UploadFile = File(...)):
             ollama_res = requests.post(OLLAMA_URL, json=payload, timeout=300)
             raw_response = ollama_res.json().get("response", "").strip()
             
-            # [핵심 필터링] 3개 단어 추출
+            # [핵심 필터링] CoVT 결과에서 최종 키워드만 추출
             import re
-            clean_text = re.sub(r'[*`_,\.]', '', raw_response)
-            keywords = [w.strip() for w in clean_text.split() if w.strip()][:3]
+            # '최종 키워드:' 이후의 단어들을 찾습니다.
+            match = re.search(r'최종 키워드:\s*(.*)', raw_response)
+            if match:
+                keywords_part = match.group(1)
+                # 특수문자 제거 및 단어 분리
+                clean_part = re.sub(r'[*`_,\.]', ' ', keywords_part)
+                keywords = [w.strip() for w in clean_part.split() if w.strip()][:3]
+            else:
+                # 만약 형식을 지키지 않았다면 마지막 3단어 시도
+                clean_text = re.sub(r'[*`_,\.]', ' ', raw_response)
+                keywords = [w.strip() for w in clean_text.split() if w.strip()][-3:]
+            
             keywords_str = ", ".join(keywords)
             
             # [단계 3] AI 분석 완료
-            yield json.dumps({"step": 3, "message": f"🎯 [단계 3] AI 분석 완료! 추출된 핵심 단어: [{keywords_str}] (원문: {raw_response[:20]}...)"}) + "\n"
+            yield json.dumps({"step": 3, "message": f"🎯 [단계 3] AI 분석 완료! (논리 추론 결과 포함)\n추출된 핵심 단어: [{keywords_str}]\n상세 분석 내용: {raw_response[:100]}..."}) + "\n"
             print(f"[AI-KEYWORD] {keywords_str}") 
             await asyncio.sleep(0.5)
 
